@@ -209,6 +209,8 @@ tool_slimmer:
 
 In two-pass mode, the first request receives your `always_include` tools plus `tool_slimmer_hydrate_tools`. That hydration tool carries a compact deterministic catalog of available tool names, one-line descriptions, toolsets, and tags. If the model needs tools, it calls `tool_slimmer_hydrate_tools` with multiple names in one batch; the next request exposes those full schemas and caches them for the session when `cache_hydrated_tools: true`.
 
+Hydration is not limited to two-pass mode (local fork feature). `tool_slimmer_hydrate_tools` requests are honored in hybrid and keyword modes too, so partial recovery works without switching modes. The model should batch all likely-needed tool names in one call, retry the original task immediately in the same turn, and only fall back to `tool_slimmer_request_full_tools` if hydration is unavailable.
+
 Keep `keyword` as the default for normal use. Two-pass can add one extra model round trip before tool use, and current Hermes history may still record the compact hydration tool call. It avoids external delegation and avoids injecting the full catalog on ordinary no-tool turns.
 
 ## Commands
@@ -264,7 +266,8 @@ If none exists, active schema slimming requires the installer/core patch to add 
 
 - `always_include` tools are selected first when present and not already disabled by Hermes.
 - `always_exclude` is a user-facing alias for `disabled_tools`. Use it when a tool is too noisy for a deployment and should only appear through Hermes outside Tool Slimmer's ranked set.
-- `tool_slimmer_request_full_tools` is always kept available when Hermes has registered it. If a skill or task needs a hidden tool, the model can call it to make the next provider request use the full schema list instead of inventing a substitute workflow.
+- `tool_slimmer_hydrate_tools` is always kept available and honored in keyword/hybrid/two-pass modes (local fork). It exposes only the requested full schemas on the next request, so it is the preferred recovery path when a needed tool is hidden: batch all likely-needed tool names in one call, then retry the original task in the same turn.
+- `tool_slimmer_request_full_tools` is always kept available when Hermes has registered it. If a skill or task needs a hidden tool and hydration is unavailable, the model can call it to make the next provider request use the full schema list instead of inventing a substitute workflow.
 - `top_k` applies after `always_include`; always-included tools do not count against the `top_k` budget. `top_k: 0` is treated as an explicit request to select no ranked tools, so it does not fail open to the full catalog.
 - `disabled_tools`, `disabled_toolsets`, `include_mcp_tools`, and `include_native_tools` are respected before ranking.
 - `profiles` let Slack, Telegram, CLI, cron, and webhook entry points use different `top_k`, include, and exclude lists without making every user interface share the same tradeoff.

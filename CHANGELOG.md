@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased (local fork)
+
+Local fork changes on top of v0.6.5 (not yet released upstream).
+
+### Added
+
+- `tool_slimmer_hydrate_tools` requests are now honored in keyword and hybrid modes, not just two-pass. Previously calling hydrate outside two-pass returned "Requested full schemas..." but did nothing (silent no-op). Integration tests added for hybrid hydration and invalid-name handling. (0d3d7bf)
+- Decision events in `tool_slimmer_status` output now include a `decisions.summary`; diagnostic report decision events are sanitized (raw `session_id` stripped, `has_session_id` flag exposed). (0d3d7bf)
+
+### Changed
+
+- Fallback instruction (`FALLBACK_INSTRUCTION`) rewritten to be hydrate-first: the model should call `tool_slimmer_hydrate_tools` with all needed tool names in one batch, retry the original task immediately in the same turn, and only fall back to `tool_slimmer_request_full_tools` if hydration is unavailable. Reduces wasted user turns when tools are hidden. (b55c792)
+- Recommended `tool_slimmer.two_pass.hydrate_limit` raised from 8 to 12 for bigger hydration batches. (b55c792)
+
 ## 0.6.5 - 2026-06-05
 
 Post-Hermes-update compatibility and packaging guardrail release.

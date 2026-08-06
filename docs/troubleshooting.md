@@ -127,7 +127,7 @@ Open the Tool Slimmer dashboard page and click **Rebuild From Hermes Tools**. Th
 
 ## A required tool is missing
 
-Ask the model to call `tool_slimmer_request_full_tools`, or add the tool to `tool_slimmer.always_include` if it should stay loaded on every request. The fallback tool marks the conversation so the next model request receives the full Hermes schema list and can retry the original action. The selector never resurrects tools that Hermes already disabled.
+First, ask the model to call `tool_slimmer_hydrate_tools` with all needed tool names in one batch (honored in keyword, hybrid, and two-pass modes). The next model request exposes only those full schemas and can retry the original action in the same turn. If hydration is unavailable (for example the tool is missing from the catalog), fall back to `tool_slimmer_request_full_tools`, which marks the conversation so the next model request receives the full Hermes schema list. Alternatively, add the tool to `tool_slimmer.always_include` if it should stay loaded on every request. The selector never resurrects tools that Hermes already disabled.
 
 In keyword mode, the selector mostly matches text present in tool names, toolsets, descriptions, and parameter schemas. It includes a small built-in synonym map for common browser/navigation wording, but domain-specific synonyms should still be added to tool descriptions or handled by a semantic selector mode when one is available.
 
@@ -137,7 +137,7 @@ In keyword mode, the selector mostly matches text present in tool names, toolset
 
 `top_k: 0` is a valid explicit setting for selecting no ranked tools. It does not trigger fail-open by itself.
 
-If simple text-only messages like `hello`, `ping`, or `thanks` still show high baseline tokens, separate tool-schema overhead from Hermes' system prompt, skills, platform context, and conversation history. Tool Slimmer can reduce the schema portion, but it cannot remove non-tool prompt content. Low-information messages keep only `always_include` plus `tool_slimmer_request_full_tools`.
+If simple text-only messages like `hello`, `ping`, or `thanks` still show high baseline tokens, separate tool-schema overhead from Hermes' system prompt, skills, platform context, and conversation history. Tool Slimmer can reduce the schema portion, but it cannot remove non-tool prompt content. Low-information messages keep only `always_include` plus the two recovery tools (`tool_slimmer_hydrate_tools`, `tool_slimmer_request_full_tools`).
 
 If a tool is noisy in your deployment, add it to `tool_slimmer.always_exclude` (alias for `disabled_tools`). Example:
 
@@ -153,6 +153,8 @@ Use this only when that entry point should not receive those tools through Tool 
 ## Experimental two-pass mode
 
 Use `mode: two_pass` only when a deployment has very large tool catalogs or providers with tight TPM limits. It sends a compact catalog first, then relies on `tool_slimmer_hydrate_tools` to request full schemas for multiple tools in one batch. The next request exposes those full schemas and can cache them for the session.
+
+Hydration is also honored outside two-pass (local fork): in keyword and hybrid modes, `tool_slimmer_hydrate_tools` requests are merged the same way, so partial recovery works without switching modes.
 
 If two-pass does not expose the expected tool, check recent dashboard events for `two_pass_requested_tools`, `two_pass_hydrated_tools`, and `two_pass_phase`. If `tool_slimmer_hydrate_tools` is missing from Hermes' registered tools, two-pass falls back to keyword mode when `two_pass.fallback_to_keyword: true`.
 

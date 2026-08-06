@@ -149,11 +149,11 @@ Start with `dry_run: true`. This lets you inspect selections without changing pr
 
 `min_total_tools` and `min_estimated_reduction_percent` are low-overhead guardrails. `min_total_tools` skips catalogs with fewer than that many tools; equality is allowed to slim. The default is `0` so subagents and restricted toolsets are still ranked. Raise it only for paths where small catalogs are not worth changing.
 
-Tool Slimmer keeps `tool_slimmer_request_full_tools` available in trimmed requests. If a skill needs a hidden tool, the model can call that fallback tool and the next model request will receive the full Hermes tool schema list.
+Tool Slimmer keeps both recovery tools available in trimmed requests. If a skill needs a hidden tool, the model should first call `tool_slimmer_hydrate_tools` with all likely-needed tool names in one batch (honored in keyword, hybrid, and two-pass modes); the next model request exposes only those full schemas and the model retries the original action in the same turn. If hydration is unavailable, the model calls `tool_slimmer_request_full_tools` and the next request receives the full Hermes tool schema list.
 
 Use `mode: keyword` first. `hybrid` only adds a deterministic fuzzy-token boost; it is not a semantic embedding mode. For broad general agents, keep `top_k` around `8`. For narrow Telegram or webhook processors, smaller values such as `4` can save more schema tokens, but add `always_include` for required tools and `always_exclude` for noisy tools such as `terminal` or `cronjob` when that entry point should never use them.
 
-Experimental `mode: two_pass` is for large catalogs or TPM-capped providers. The first request gets only always-included tools plus `tool_slimmer_hydrate_tools`, whose schema contains a compact deterministic catalog. If the model needs tools, it asks for multiple full schemas in one hydration batch and the next request exposes only those schemas. Start with `keyword`; switch to `two_pass` only when the extra round trip is worth the schema savings.
+Experimental `mode: two_pass` is for large catalogs or TPM-capped providers. The first request gets only always-included tools plus `tool_slimmer_hydrate_tools`, whose schema contains a compact deterministic catalog. If the model needs tools, it asks for multiple full schemas in one hydration batch and the next request exposes only those schemas. Hydration also works outside two-pass: in keyword and hybrid modes, `tool_slimmer_hydrate_tools` requests are honored the same way (local fork). Start with `keyword`; switch to `two_pass` only when the extra round trip is worth the schema savings.
 
 ## 3. Check installation
 
