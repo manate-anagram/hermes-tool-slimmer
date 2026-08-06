@@ -511,6 +511,90 @@ def test_full_tools_request_marker_preserves_disabled_policy(monkeypatch, tmp_pa
     assert out == [schemas[0], schemas[2]]
 
 
+def test_hybrid_mode_honors_hydrate_request(monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    schemas = [
+        {"name": "read_file", "description": "Read files"},
+        {"name": "search_files", "description": "Search files"},
+        {"name": "web_search", "description": "Search the web"},
+    ]
+    conversation_history = [
+        {
+            "role": "tool",
+            "content": json.dumps(
+                {
+                    HYDRATE_REQUEST_MARKER: True,
+                    "tools": ["web_search"],
+                    "message": "Requested full schemas for the next model call. Retry the original task after schemas hydrate.",
+                }
+            ),
+        }
+    ]
+
+    out = select_tool_schemas_callback(
+        "read",
+        conversation_history,
+        schemas,
+        "model",
+        "tui",
+        session_id="session-hydrate-hybrid",
+        config=ToolSlimmerConfig(
+            mode="hybrid",
+            top_k=0,  # selector picks nothing; only the hydrate merge can add web_search
+            always_include=[],
+            min_total_tools=0,
+            min_score=0.0,
+            log_decisions=False,
+        ),
+    )
+
+    assert out is not None
+    names = [schema["name"] for schema in out]
+    assert "web_search" in names  # hydrate request honored outside two_pass
+
+
+def test_hybrid_mode_drops_invalid_hydrate_names(monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    schemas = [
+        {"name": "read_file", "description": "Read files"},
+        {"name": "search_files", "description": "Search files"},
+    ]
+    conversation_history = [
+        {
+            "role": "tool",
+            "content": json.dumps(
+                {
+                    HYDRATE_REQUEST_MARKER: True,
+                    "tools": ["does_not_exist"],
+                    "message": "Requested full schemas for the next model call.",
+                }
+            ),
+        }
+    ]
+
+    out = select_tool_schemas_callback(
+        "read",
+        conversation_history,
+        schemas,
+        "model",
+        "tui",
+        session_id="session-hydrate-invalid",
+        config=ToolSlimmerConfig(
+            mode="hybrid",
+            top_k=0,
+            always_include=[],
+            min_total_tools=0,
+            min_score=0.0,
+            log_decisions=False,
+        ),
+    )
+
+    assert out is not None
+    names = [schema["name"] for schema in out]
+    assert "does_not_exist" not in names
+    assert names == []
+
+
 def test_full_tools_request_marker_ignores_plain_text_marker(monkeypatch, tmp_path):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     schemas = [

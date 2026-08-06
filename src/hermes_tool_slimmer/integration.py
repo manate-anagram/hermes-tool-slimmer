@@ -97,6 +97,24 @@ def _always_include_schemas(schemas_by_name: dict[str, Schema], cfg: ToolSlimmer
         if name in schemas_by_name and name not in names:
             selected.append(schemas_by_name[name])
             names.append(name)
+        elif name not in schemas_by_name and name not in names and name not in ("tool_slimmer_request_full_tools", HYDRATE_TOOL_NAME):
+            # Tool is in always_include but not in schemas_by_name (stale Hermes cache).
+            # Try to fetch its schema from the Hermes tool registry directly.
+            try:
+                from tools.registry import registry
+                entry = registry._tools.get(name)
+                if entry is None:
+                    continue
+                # Always_include tools should be available even if check_fn fails
+                # (handles stale Hermes startup cache that makes check_fn raise)
+                raw_schema = registry.get_schema(name)
+                if raw_schema:
+                    wrapped = {"type": "function", "function": raw_schema}
+                    schemas_by_name[name] = wrapped
+                    selected.append(wrapped)
+                    names.append(name)
+            except Exception:
+                pass
     return selected, names
 
 
@@ -259,6 +277,21 @@ def select_tool_schemas_callback(
     if not cfg.enabled:
         return None
     try:
+        # --- BEGIN Hermes cache flush ---
+        # Force-recompute get_tool_definitions() so always_include tools
+        # (read_file, write_file, etc.) are not stuck in a stale cache.
+        try:
+            from model_tools import _clear_tool_defs_cache
+            _clear_tool_defs_cache()
+        except ImportError:
+            pass
+        try:
+            from tools.registry import invalidate_check_fn_cache
+            invalidate_check_fn_cache()
+        except ImportError:
+            pass
+        # --- END Hermes cache flush ---
+
         started = perf_counter()
         _sync_live_index(
             schemas,
@@ -398,6 +431,35 @@ def select_tool_schemas_callback(
                 session_id=session_id,
                 **kwargs,
             )
+            # Always_include handling for hybrid/keyword modes (two_pass has its own)
+            if cfg.mode != "anthropic_tool_search":
+                schemas_by_name = _schema_by_name(policy_schemas)
+                always_selected, always_names = _always_include_schemas(schemas_by_name, cfg)
+                # Merge: add always_include tools that aren't already selected
+                result_names = set(result.selected_names or [])
+                extra_selected = []
+                extra_names = []
+                for schema, name in zip(always_selected, always_names):
+                    if name not in result_names:
+                        extra_selected.append(schema)
+                        extra_names.append(name)
+                        result_names.add(name)
+                # Honor tool_slimmer_hydrate_tools requests in hybrid/keyword modes too.
+                # Upstream only consumes hydration markers inside the two_pass branch, so
+                # outside two_pass a hydrate call returns "requested" but no schema ever
+                # appears. Merge the requested schemas here so hydrate works in any mode.
+                requested = [
+                    name
+                    for name in requested_hydration_tools(conversation_history)
+                    if name in schemas_by_name and name not in result_names
+                ]
+                for name in requested[: cfg.two_pass.hydrate_limit]:
+                    extra_selected.append(schemas_by_name[name])
+                    extra_names.append(name)
+                if extra_names:
+                    # Use object.__setattr__ to bypass frozen dataclass constraint
+                    object.__setattr__(result, 'selected', result.selected + extra_selected)
+                    object.__setattr__(result, 'selected_names', (result.selected_names or []) + extra_names)
             selected = maybe_anthropic_tools(
                 provider,
                 model,

@@ -8,3 +8,5 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+# Accidental nested copy of this repo (2026-08-06)
+hermes-tool-slimmer/

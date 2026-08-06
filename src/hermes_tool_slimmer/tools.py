@@ -70,6 +70,9 @@ def tool_slimmer_status(args: dict, **kwargs: Any) -> str:
         cfg = load_config(args.get("config_path") if isinstance(args, dict) else None)
         store = IndexStore()
         index = store.load()
+        from .metrics import summarize_decisions
+        from .native import native_tool_search_status
+        decisions_summary = summarize_decisions(limit=100, require_session=True)
         return _json(
             {
                 "ok": True,
@@ -81,6 +84,10 @@ def tool_slimmer_status(args: dict, **kwargs: Any) -> str:
                     "path": str(store.path),
                     "exists": index is not None,
                     "total_tools": (index or {}).get("total_tools", 0),
+                },
+                "decisions": {
+                    "summary": {k: v for k, v in decisions_summary.items() if k != "recent"},
+                    "recent": decisions_summary.get("recent", []),
                 },
             }
         )

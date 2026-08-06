@@ -171,7 +171,9 @@ def diagnostic_report(limit: int = 200) -> dict[str, object]:
     status_schemas = live_schemas or _schemas_from_index(index)
     events = read_decisions(limit=limit)
     summary = summarize_decisions(limit=limit, require_session=True)
-    summary.pop("recent", None)
+    raw_recent = summary.get("recent", [])
+    recent_events = [_sanitize_recent_event(event) for event in (raw_recent if isinstance(raw_recent, list) else [])]
+    summary = {**summary, "recent": recent_events}
     last_event = events[-1] if events else {}
     last_context = last_event.get("context") if isinstance(last_event, dict) else {}
     last_metrics = last_event.get("metrics") if isinstance(last_event, dict) else {}
@@ -216,6 +218,7 @@ def diagnostic_report(limit: int = 200) -> dict[str, object]:
         },
         "decisions": {
             "summary": summary,
+            "recent": [_sanitize_recent_event(event) for event in summary.get("recent", [])],
             "last_event": {
                 "context": {
                     "provider": last_context.get("provider"),
@@ -254,6 +257,43 @@ def _sanitize_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "checksum": str(snapshot.get("checksum") or "")[:12],
         "updated_at": snapshot.get("updated_at"),
         "path": snapshot.get("path"),
+    }
+
+
+def _sanitize_recent_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Allowlist projection of a raw decision event for the diagnostic report.
+
+    Raw events carry context.session_id (and could carry prompts in future
+    versions), so only copy known-safe fields and expose session presence as a
+    boolean, mirroring _sanitize_snapshot.
+    """
+    context = event.get("context") if isinstance(event, dict) else {}
+    if not isinstance(context, dict):
+        context = {}
+    metrics = event.get("metrics") if isinstance(event, dict) else {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+    return {
+        "timestamp": event.get("timestamp"),
+        "context": {
+            "provider": context.get("provider"),
+            "model": context.get("model"),
+            "platform": context.get("platform"),
+            "schema_count": context.get("schema_count"),
+            "dry_run": context.get("dry_run"),
+            "has_session_id": bool(context.get("session_id")),
+        },
+        "metrics": {
+            "mode": metrics.get("mode"),
+            "total_tools": metrics.get("total_tools"),
+            "selected_tools": metrics.get("selected_tools"),
+            "estimated_reduction_percent": metrics.get("estimated_reduction_percent"),
+            "skipped": metrics.get("skipped"),
+            "skip_reason": metrics.get("skip_reason"),
+            "selected": metrics.get("selected"),
+            "two_pass_phase": metrics.get("two_pass_phase"),
+            "two_pass_fallback": metrics.get("two_pass_fallback"),
+        },
     }
 
 
