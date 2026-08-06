@@ -28,7 +28,11 @@ LOG = logging.getLogger(__name__)
 
 FALLBACK_INSTRUCTION = (
     "Tool Slimmer may hide tools. If a skill or task requires a missing tool, "
-    "call tool_slimmer_request_full_tools; do not invent replacement tools."
+    "call tool_slimmer_hydrate_tools with ALL needed tool names in ONE batch; "
+    "it only exposes schemas on the next model call, so after it returns, retry "
+    "the original task immediately in the same turn — do not end the turn asking "
+    "the user to continue. Only if hydrate is unavailable, call "
+    "tool_slimmer_request_full_tools; do not invent replacement tools."
 )
 
 _TOOL_NAME_RE = re.compile(r"\b[a-z][a-z0-9_]{2,}\b")
